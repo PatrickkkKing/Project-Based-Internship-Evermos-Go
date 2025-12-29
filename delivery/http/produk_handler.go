@@ -17,7 +17,11 @@ func NewProdukHandler(uc *usecase.ProdukUsecase) *ProdukHandler {
 }
 
 func (h *ProdukHandler) Create(c *fiber.Ctx) error {
-	tokoID := c.Locals("toko_id").(uint)
+	tid := c.Locals("toko_id")
+	tokoID, ok := tid.(uint)
+	if !ok {
+		return c.Status(401).JSON(fiber.Map{"error": "unauthorized"})
+	}
 
 	p := new(domain.Produk)
 	if err := c.BodyParser(p); err != nil {
@@ -27,7 +31,7 @@ func (h *ProdukHandler) Create(c *fiber.Ctx) error {
 	file, err := c.FormFile("image")
 	if err == nil {
 		path := "./uploads/" + file.Filename
-		c.SaveFile(file, path)
+		_ = c.SaveFile(file, path)
 		p.Image = path
 	}
 
@@ -39,26 +43,41 @@ func (h *ProdukHandler) Create(c *fiber.Ctx) error {
 }
 
 func (h *ProdukHandler) List(c *fiber.Ctx) error {
-	tokoIDRaw := c.Locals("toko_id")
-	if tokoIDRaw == nil {
-		return c.Status(400).JSON(fiber.Map{"error": "toko_id not found"})
+	tid := c.Locals("toko_id")
+	tokoID, ok := tid.(uint)
+	if !ok {
+		return c.Status(401).JSON(fiber.Map{"error": "unauthorized"})
 	}
-	tokoID := tokoIDRaw.(uint)
-	list, _ := h.uc.List(tokoID)
+
+	list, err := h.uc.List(tokoID)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
 	return c.JSON(list)
 }
 
 func (h *ProdukHandler) Update(c *fiber.Ctx) error {
-	tokoID := c.Locals("toko_id").(uint)
-	id, _ := strconv.Atoi(c.Params("id"))
+	tid := c.Locals("toko_id")
+	tokoID, ok := tid.(uint)
+	if !ok {
+		return c.Status(401).JSON(fiber.Map{"error": "unauthorized"})
+	}
+
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid id"})
+	}
 
 	p := new(domain.Produk)
-	c.BodyParser(p)
+	if err := c.BodyParser(p); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid body"})
+	}
 
 	file, err := c.FormFile("image")
 	if err == nil {
 		path := "./uploads/" + file.Filename
-		c.SaveFile(file, path)
+		_ = c.SaveFile(file, path)
 		p.Image = path
 	}
 
@@ -70,8 +89,16 @@ func (h *ProdukHandler) Update(c *fiber.Ctx) error {
 }
 
 func (h *ProdukHandler) Delete(c *fiber.Ctx) error {
-	tokoID := c.Locals("toko_id").(uint)
-	id, _ := strconv.Atoi(c.Params("id"))
+	tid := c.Locals("toko_id")
+	tokoID, ok := tid.(uint)
+	if !ok {
+		return c.Status(401).JSON(fiber.Map{"error": "unauthorized"})
+	}
+
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid id"})
+	}
 
 	if err := h.uc.Delete(tokoID, uint(id)); err != nil {
 		return c.Status(403).JSON(fiber.Map{"error": err.Error()})

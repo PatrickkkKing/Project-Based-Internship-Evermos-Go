@@ -21,12 +21,19 @@ func main() {
 		&domain.Produk{},
 		&domain.Transaksi{},
 		&domain.TransaksiItem{},
+		&domain.LogProduk{},
 	)
 	if err := db.Error; err != nil {
 		panic(err)
 	}
 
 	app := fiber.New()
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"message": "API Evermos Running",
+		})
+	})
 
 	// ================= REPOSITORY =================
 	userRepo := repository.NewUserMySQL(db)
@@ -35,6 +42,7 @@ func main() {
 	kategoriRepo := repository.NewKategoriMySQL(db)
 	produkRepo := repository.NewProdukMySQL(db)
 	transaksiRepo := repository.NewTransaksiMySQL(db)
+	logRepo := repository.NewLogProdukRepository(db)
 
 	// ================= USECASE =================
 	authUC := usecase.NewAuthUsecase(userRepo, tokoRepo)
@@ -43,7 +51,7 @@ func main() {
 	alamatUC := usecase.NewAlamatUsecase(alamatRepo)
 	kategoriUC := usecase.NewKategoriUsecase(kategoriRepo)
 	produkUC := usecase.NewProdukUsecase(produkRepo)
-	transaksiUC := usecase.NewTransaksiUsecase(transaksiRepo, produkRepo)
+	transaksiUC := usecase.NewTransaksiUsecase(transaksiRepo, produkRepo, logRepo)
 
 	// ================= HANDLER =================
 	authHandler := httpDelivery.NewAuthHandler(authUC)
@@ -77,7 +85,7 @@ func main() {
 	api.Put("/kategori/:id", kategoriHandler.Update)
 	api.Delete("/kategori/:id", kategoriHandler.Delete)
 
-	app.Post("/register-admin", authHandler.RegisterAdmin)
+	api.Post("/register-admin", authHandler.RegisterAdmin)
 
 	api.Get("/produk", produkHandler.List)
 	api.Post("/produk", produkHandler.Create)
@@ -93,6 +101,7 @@ func main() {
 	// db.AutoMigrate(&domain.Produk{})
 	// db.AutoMigrate(&domain.Transaksi{})
 	// db.AutoMigrate(&domain.TransaksiItem{})
+	// db.AutoMigrate(&domain.LogProduk{})
 
 	app.Listen(":3000")
 }

@@ -9,13 +9,19 @@ import (
 type TransaksiUsecase struct {
 	transaksiRepo repository.TransaksiRepository
 	produkRepo    repository.ProdukRepository
+	logRepo       repository.LogProdukRepository
 }
 
 func NewTransaksiUsecase(
 	tr repository.TransaksiRepository,
 	pr repository.ProdukRepository,
+	lr repository.LogProdukRepository,
 ) *TransaksiUsecase {
-	return &TransaksiUsecase{tr, pr}
+	return &TransaksiUsecase{
+		transaksiRepo: tr,
+		produkRepo:    pr,
+		logRepo:       lr,
+	}
 }
 
 func (u *TransaksiUsecase) Create(
@@ -23,7 +29,12 @@ func (u *TransaksiUsecase) Create(
 	items []domain.TransaksiItem,
 ) error {
 
+	if len(items) == 0 {
+		return errors.New("items cannot be empty")
+	}
+
 	var total float64
+	var logs []domain.LogProduk
 
 	for i, item := range items {
 		prod, err := u.produkRepo.FindByID(item.ProdukID)
@@ -35,14 +46,27 @@ func (u *TransaksiUsecase) Create(
 			return errors.New("stock not enough")
 		}
 
+		// kurangi stok
 		prod.Stock -= item.Qty
-		u.produkRepo.Update(prod)
+		if err := u.produkRepo.Update(prod); err != nil {
+			return err
+		}
 
+		// isi item transaksi
 		items[i].NamaProduk = prod.Name
 		items[i].HargaProduk = prod.Price
 		items[i].Subtotal = prod.Price * float64(item.Qty)
 
 		total += items[i].Subtotal
+
+		// log produk (snapshot)
+		logs = append(logs, domain.LogProduk{
+			ProdukID: prod.ID,
+			Nama:     prod.Name,
+			Harga:    prod.Price,
+			Qty:      item.Qty,
+			Subtotal: items[i].Subtotal,
+		})
 	}
 
 	tx := domain.Transaksi{
@@ -53,12 +77,23 @@ func (u *TransaksiUsecase) Create(
 		Items:    items,
 	}
 
-	return u.transaksiRepo.Create(&tx)
+	// create transaksi
+	if err := u.transaksiRepo.Create(&tx); err != nil {
+		return err
+	}
+
+	// simpan log produk
+	for i := range logs {
+		logs[i].TransaksiID = tx.ID
+		if err := u.logRepo.Create(&logs[i]); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
-func (u *TransaksiUsecase) ListByUser(userID uint) ([]domain.Transaksi, error) {
-	return u.transaksiRepo.ListByUser(userID)
-}
+// ================= LIST =================
 
 func (u *TransaksiUsecase) List(
 	userID uint,
@@ -66,6 +101,8 @@ func (u *TransaksiUsecase) List(
 ) ([]domain.Transaksi, int64, error) {
 	return u.transaksiRepo.ListByUserPaginate(userID, page, limit)
 }
+
+// ================= FILTER =================
 
 func (u *TransaksiUsecase) FilterByDate(
 	userID uint,
